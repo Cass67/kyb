@@ -170,13 +170,7 @@ final class AppState: ObservableObject {
         guard isUnlocked else { return }
         saveTask?.cancel()
         saveTask = nil
-        securityWarnings = SnippetGuard.blockingWarnings(for: mappings)
-        guard securityWarnings.isEmpty else {
-            errorMessage = "Save blocked by secret guard"
-            HotkeyManager.shared.unregisterAll()
-            log("Save blocked by secret guard")
-            return
-        }
+        securityWarnings = SnippetGuard.warnings(for: mappings)
         guard let session else {
             errorMessage = SecureStoreError.missingSession.localizedDescription
             return
@@ -186,7 +180,11 @@ final class AppState: ObservableObject {
             registerHotkeys()
             scheduleAutoLock()
             errorMessage = nil
-            log("Saved \(mappings.count) mapping(s)")
+            if securityWarnings.isEmpty {
+                log("Saved \(mappings.count) mapping(s)")
+            } else {
+                log("Saved \(mappings.count) mapping(s) with sensitive-snippet warning")
+            }
         } catch {
             errorMessage = error.localizedDescription
             log("Save failed: \(error.localizedDescription)")

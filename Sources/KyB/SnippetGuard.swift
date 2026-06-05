@@ -1,11 +1,11 @@
 import Foundation
 
 enum SnippetGuard {
-    static func blockingWarnings(for mappings: [Mapping]) -> [String] {
+    static func warnings(for mappings: [Mapping]) -> [String] {
         mappings.compactMap { mapping in
             guard mapping.enabled, looksSensitive(mapping.text) else { return nil }
             let label = mapping.name.isEmpty ? mapping.combo.description : mapping.name
-            return "Blocked save: \(label) looks like password/token/private key material. KyB refuses secret-like snippets."
+            return "Warning: \(label) looks sensitive. It will be saved in encrypted vault; prefer AX-only/type modes to avoid clipboard exposure."
         }
     }
 

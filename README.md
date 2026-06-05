@@ -7,7 +7,7 @@ Unlock your encrypted vault, press a shortcut like `⌃⌥F6`, and KyB inserts t
 ## What it does
 
 - Global hotkeys for snippets.
-- Local encrypted vault protected by a master password.
+- Local encrypted vault protected by a master password, suitable for sensitive snippets you choose to store.
 - Masked snippet text by default, with `Show text` / `Hide text` controls.
 - Multiple insertion modes:
   - Auto best effort
@@ -93,14 +93,14 @@ Current hardening:
 - Import validates vault structure before replacing the current vault.
 - Import backs up the existing vault to `vault.backup.json`.
 - Export copies encrypted vault bytes only; plaintext mappings are never exported.
-- Secret guard blocks snippets that look like passwords, tokens, API keys, private keys, or long high-entropy strings.
+- Sensitive-snippet guard warns on passwords, tokens, API keys, private keys, or long high-entropy strings, but does not block saving.
 - Install script uses a stable app path and resets stale Accessibility/TCC state.
 
 Important limits:
 
 - If the Mac is compromised while KyB is unlocked, snippets may be readable from memory.
 - Clipboard-based insertion exposes snippet text briefly to the system clipboard.
-- Clipboard managers may capture pasted text.
+- Clipboard managers may capture pasted text. For passwords/sensitive snippets, use `AX insert only` or `Type characters` where possible.
 - macOS secure input/password dialogs may block KyB entirely.
 - Unsigned/ad-hoc-signed local builds are more brittle than Developer ID signed + notarized apps.
 
