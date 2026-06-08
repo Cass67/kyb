@@ -8,17 +8,21 @@ import SwiftUI
 final class AppState: ObservableObject {
     @Published var isUnlocked = false
     @Published var mappings: [Mapping] = []
+    @Published var settings: VaultSettings = .init()
     @Published var errorMessage: String?
     @Published var securityWarnings: [String] = []
-    @Published var hotkeyStatus = "No hotkeys registered yet."
+    @Published var hotkeyStatus: String = "No hotkeys registered yet."
     @Published var needsAccessibility = !AXIsProcessTrusted()
     @Published var permissionMessage: String?
-    @Published var diagnosticStatus = ""
-    @Published var delayedTestStatus = ""
+    @Published var diagnosticStatus: String = ""
+    @Published var delayedTestStatus: String = ""
     @Published var eventLog: [String] = []
     @Published var launchAtLogin = false
-    @Published var autoLockMinutes = 10 {
-        didSet { scheduleAutoLock() }
+    @Published var autoLockMinutes: Int = 10 {
+        didSet {
+            settings.autoLockMinutes = autoLockMinutes
+            scheduleAutoLock()
+        }
     }
 
     private let store: SecureStore
@@ -27,7 +31,7 @@ final class AppState: ObservableObject {
     private var autoLockTask: DispatchWorkItem?
     private var saveTask: DispatchWorkItem?
 
-    init() {
+    init() throws {
         do {
             store = try SecureStore()
             refreshLaunchAtLogin()
@@ -45,7 +49,7 @@ final class AppState: ObservableObject {
     }
 
     var autoLockLabel: String {
-        autoLockMinutes == 0 ? "Off" : "\(autoLockMinutes)m"
+        settings.autoLockMinutes == 0 ? "Off" : "\(settings.autoLockMinutes)m"
     }
 
     var appBundlePath: String {
@@ -120,7 +124,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    func unlock(password: String) {
+    func unlock(password: String) throws {
         errorMessage = nil
         securityWarnings = []
         guard password.count >= 8 else {
@@ -131,10 +135,14 @@ final class AppState: ObservableObject {
             if store.exists {
                 let unlocked = try store.unlock(password: password)
                 mappings = unlocked.mappings
+                settings = unlocked.settings
+                autoLockMinutes = settings.autoLockMinutes
                 session = unlocked.session
             } else {
                 mappings = [Mapping(name: "Example", combo: .init(keyCode: 97, modifiers: [.control, .option]), text: "Hello from KyB")]
-                session = try store.create(password: password, mappings: mappings)
+                settings = VaultSettings()
+                autoLockMinutes = settings.autoLockMinutes
+                session = try store.create(password: password, mappings: mappings, settings: settings)
             }
             isUnlocked = true
             registerHotkeys()
@@ -170,12 +178,12 @@ final class AppState: ObservableObject {
         saveTask?.cancel()
         saveTask = nil
         securityWarnings = SnippetGuard.warnings(for: mappings)
-        guard let session else {
+        guard let session = session else {
             errorMessage = SecureStoreError.missingSession.localizedDescription
             return
         }
         do {
-            try store.save(mappings: mappings, session: session)
+            try store.save(mappings: mappings, settings: settings, session: session)
             registerHotkeys()
             scheduleAutoLock()
             errorMessage = nil
@@ -191,7 +199,7 @@ final class AppState: ObservableObject {
     }
 
     func addMapping() {
-        mappings.append(Mapping(name: "New", combo: .init(keyCode: 97, modifiers: [.control, .option]), text: ""))
+        mappings.append(Mapping(name: "New", combo: .init(keyCode: 97, modifiers: [.control, .option]), text: "", injectionMode: settings.defaultInjectionMode))
         save()
     }
 
@@ -215,15 +223,16 @@ final class AppState: ObservableObject {
         delayedTestStatus = "Focus target field now. Pasting in 3…"
         for second in 1 ... 3 {
             DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(second)) { [weak self] in
+                guard let self = self else { return }
                 let remaining = 3 - second
-                self?.delayedTestStatus = remaining == 0 ? "Pasting now." : "Focus target field now. Pasting in \(remaining)…"
+                self.delayedTestStatus = remaining == 0 ? "Pasting now." : "Focus target field now. Pasting in \(remaining)…"
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(3)) { [weak self] in
-            guard let self else { return }
+            guard let self = self else { return }
             let result = injector.inject("KyB delayed test", mode: .accessibilityThenPaste)
-            delayedTestStatus = "Delayed test sent: \(result.method)."
-            log("Delayed test: \(result.method) · \(result.message)")
+            self.delayedTestStatus = "Delayed test sent: \(result.method)."
+            self.log("Delayed test: \(result.method) · \(result.message)")
         }
     }
 
@@ -253,20 +262,15 @@ final class AppState: ObservableObject {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url {
+        if panel.runModal() == .OK, let url = url {
             do {
                 let source = url.standardizedFileURL
                 let dest = URL(fileURLWithPath: vaultPath).standardizedFileURL
-                guard source.path != dest.path else { throw SecureStoreError.unsafePath }
                 try store.validateImportCandidate(source)
                 lock()
                 let backup = dest.deletingLastPathComponent().appendingPathComponent("vault.backup.json")
                 if FileManager.default.fileExists(atPath: backup.path) {
                     try FileManager.default.removeItem(at: backup)
-                }
-                if FileManager.default.fileExists(atPath: dest.path) {
-                    try FileManager.default.copyItem(at: dest, to: backup)
-                    try FileManager.default.removeItem(at: dest)
                 }
                 try FileManager.default.copyItem(at: source, to: dest)
                 try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: dest.path)
@@ -315,16 +319,16 @@ final class AppState: ObservableObject {
 
     private func scheduleAutoLock() {
         autoLockTask?.cancel()
-        guard isUnlocked, autoLockMinutes > 0 else { return }
+        guard isUnlocked, settings.autoLockMinutes > 0 else { return }
         let task = DispatchWorkItem { [weak self] in
             Task { @MainActor in self?.lock() }
         }
         autoLockTask = task
-        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(autoLockMinutes * 60), execute: task)
+        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(settings.autoLockMinutes * 60), execute: task)
     }
 
     private func log(_ message: String) {
-        let ts = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+        let ts = DateFormatter.localizedstring(from: Date(), dateStyle: .none, timeStyle: .medium)
         eventLog.insert("\(ts)  \(message)", at: 0)
         if eventLog.count > 30 { eventLog.removeLast(eventLog.count - 30) }
     }

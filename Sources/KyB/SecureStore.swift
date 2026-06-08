@@ -15,6 +15,7 @@ struct VaultFile: Codable {
 
 struct VaultPayload: Codable {
     var mappings: [Mapping]
+    var settings: VaultSettings?
 }
 
 struct VaultSession {
@@ -66,7 +67,7 @@ final class SecureStore {
         fileURL.path
     }
 
-    func unlock(password: String) throws -> (mappings: [Mapping], session: VaultSession) {
+    func unlock(password: String) throws -> (mappings: [Mapping], settings: VaultSettings, session: VaultSession) {
         try rejectSymlinkIfPresent(fileURL)
         let vault = try readVault(from: fileURL)
         let iterations = vault.kdfIterations ?? Self.legacyIterations
@@ -74,25 +75,27 @@ final class SecureStore {
         let box = try AES.GCM.SealedBox(nonce: AES.GCM.Nonce(data: vault.nonce), ciphertext: vault.ciphertext, tag: vault.tag)
         do {
             let opened = try AES.GCM.open(box, using: key)
-            let mappings = try JSONDecoder().decode(VaultPayload.self, from: opened).mappings
+            let payload = try JSONDecoder().decode(VaultPayload.self, from: opened)
+            let mappings = payload.mappings
+            let settings = payload.settings ?? VaultSettings()
             hardenVaultPermissionsIfPresent()
-            return (mappings, VaultSession(salt: vault.salt, key: key, kdfIterations: iterations))
+            return (mappings, settings, VaultSession(salt: vault.salt, key: key, kdfIterations: iterations))
         } catch {
             throw SecureStoreError.badPassword
         }
     }
 
-    func create(password: String, mappings: [Mapping]) throws -> VaultSession {
+    func create(password: String, mappings: [Mapping], settings: VaultSettings) throws -> VaultSession {
         let salt = try randomData(count: 32)
         let key = try deriveKey(password: password, salt: salt, iterations: Self.currentIterations)
         let session = VaultSession(salt: salt, key: key, kdfIterations: Self.currentIterations)
-        try save(mappings: mappings, session: session)
+        try save(mappings: mappings, settings: settings, session: session)
         return session
     }
 
-    func save(mappings: [Mapping], session: VaultSession) throws {
+    func save(mappings: [Mapping], settings: VaultSettings, session: VaultSession) throws {
         try rejectSymlinkIfPresent(fileURL)
-        let payload = try JSONEncoder().encode(VaultPayload(mappings: mappings))
+        let payload = try JSONEncoder().encode(VaultPayload(mappings: mappings, settings: settings))
         let box = try AES.GCM.seal(payload, using: session.key)
         let vault = VaultFile(
             salt: session.salt,
