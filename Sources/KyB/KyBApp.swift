@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct KyBApp: App {
-    @StateObject private var appState = AppState()
+    @StateObject private var appState: AppState = try! AppState()
 
     var body: some Scene {
         MenuBarExtra("KyB", systemImage: "keyboard") {

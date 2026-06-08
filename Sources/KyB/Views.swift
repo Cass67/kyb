@@ -79,9 +79,21 @@ struct LoginView: View {
                 .font(.headline)
             SecureField("Master password", text: $password)
                 .textFieldStyle(.roundedBorder)
-                .onSubmit { app.unlock(password: password) }
-            Button(app.vaultExists ? "Unlock" : "Create Vault") { app.unlock(password: password) }
-                .keyboardShortcut(.defaultAction)
+                .onSubmit {
+                    do {
+                        try app.unlock(password: password)
+                    } catch {
+                        app.errorMessage = error.localizedDescription
+                    }
+                }
+            Button(app.vaultExists ? "Unlock" : "Create Vault") {
+                do {
+                    try app.unlock(password: password)
+                } catch {
+                    app.errorMessage = error.localizedDescription
+                }
+            }
+            .keyboardShortcut(.defaultAction)
             if let error = app.errorMessage {
                 Text(error).foregroundStyle(.red).font(.caption)
             }

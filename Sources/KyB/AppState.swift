@@ -8,7 +8,7 @@ import SwiftUI
 final class AppState: ObservableObject {
     @Published var isUnlocked = false
     @Published var mappings: [Mapping] = []
-    @Published var settings: VaultSettings = .init()
+    @Published var settings = VaultSettings()
     @Published var errorMessage: String?
     @Published var securityWarnings: [String] = []
     @Published var hotkeyStatus: String = "No hotkeys registered yet."
@@ -262,7 +262,7 @@ final class AppState: ObservableObject {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = url {
+        if panel.runModal() == .OK, let url = panel.url {
             do {
                 let source = url.standardizedFileURL
                 let dest = URL(fileURLWithPath: vaultPath).standardizedFileURL
@@ -328,7 +328,7 @@ final class AppState: ObservableObject {
     }
 
     private func log(_ message: String) {
-        let ts = DateFormatter.localizedstring(from: Date(), dateStyle: .none, timeStyle: .medium)
+        let ts = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
         eventLog.insert("\(ts)  \(message)", at: 0)
         if eventLog.count > 30 { eventLog.removeLast(eventLog.count - 30) }
     }
