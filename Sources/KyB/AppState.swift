@@ -130,7 +130,7 @@ final class AppState: ObservableObject {
         do {
             if store.exists {
                 let unlocked = try store.unlock(password: password)
-                mappings = preferSecureInsertionModes(unlocked.mappings)
+                mappings = unlocked.mappings
                 session = unlocked.session
             } else {
                 mappings = [Mapping(name: "Example", combo: .init(keyCode: 97, modifiers: [.control, .option]), text: "Hello from KyB")]
@@ -139,7 +139,6 @@ final class AppState: ObservableObject {
             isUnlocked = true
             registerHotkeys()
             scheduleAutoLock()
-            save()
             log("Vault unlocked")
         } catch {
             errorMessage = error.localizedDescription
@@ -299,19 +298,6 @@ final class AppState: ObservableObject {
             errorMessage = error.localizedDescription
             refreshLaunchAtLogin()
             log("Launch at login failed: \(error.localizedDescription)")
-        }
-    }
-
-    private func preferSecureInsertionModes(_ input: [Mapping]) -> [Mapping] {
-        input.map { mapping in
-            var next = mapping
-            switch next.injectionMode {
-            case .pasteAndRestoreClipboard, .pasteAndClearClipboard, .accessibilityThenPaste:
-                next.injectionMode = .bestEffort
-            case .bestEffort, .aggressiveBestEffort, .accessibilityOnly, .typeCharacters:
-                break
-            }
-            return next
         }
     }
 
